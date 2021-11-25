@@ -1,0 +1,18 @@
+{
+  "name": "Kk.LeoHot.Test",
+  "includePlatforms": [
+    "Editor"
+  ],
+  "references": [
+    "Leopotam.EcsLite",
+    "Kk.LeoHot",
+    "UnityEditor.TestRunner",
+    "UnityEngine.TestRunner"
+  ],
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ]
+}

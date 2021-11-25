@@ -1,0 +1,17 @@
+{
+    "name": "com.nplekhanov.csx.leohot",
+    "author": "kkolyan",
+    "displayName": "leohot",
+    "description": "Hot-reload for LeoECS Lite",
+    "unity": "2019.1",
+    "version": "2020.11.22",
+    "keywords": [
+        "leoecs",
+        "ecs"
+    ],
+    "dependencies": {},
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/kkolyan/leohot"
+    }
+}
