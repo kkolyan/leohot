@@ -9,12 +9,18 @@ Unity hot-reload extension for [LeoECS Lite](https://github.com/Leopotam/ecslite
 
 # Implementation notes
 
-## Serialization
+### Serialization
 In order to support cross-references, library deeply transforms components using reflection 
 before leaving it to Unity's serializer. But transformer mimics Unity's serialization rules, so you shouldn't care.
 
-## Performance
-Implementation is simple and allocation intensive. Need to test if that's ok.
+### Performance
+Implementation is simple and allocation intensive. Need to test if that's ok at least on common dataset sizes.
+
+# Installation
+Add following line to `Packages/manifest.json`'s `dependencies` section:
+```
+"com.nplekhanov.csx.leohot": "https://github.com/kkolyan/leohot.git",
+```
 
 # How to use
 Note that usual ECS initialization (systems and worlds definitions) moved from `Start` to `OnEnable` - that's mandatory.
