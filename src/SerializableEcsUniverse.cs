@@ -27,6 +27,7 @@ namespace Kk.LeoHot
             public Object linkOwner;
             public int packedStateId;
         }
+
         private struct IncomingLink
         {
             internal Type ownerType;
@@ -36,7 +37,6 @@ namespace Kk.LeoHot
 
         public SerializableEcsUniverse()
         {
-            
             AddConverter<EcsPackedEntityWithWorld, int>(
                 (runtime, ctx) =>
                 {
@@ -44,6 +44,7 @@ namespace Kk.LeoHot
                     {
                         return 0;
                     }
+
                     TempEntityKey tempEntityKey = new TempEntityKey(ctx.worldToName[world], entity);
                     return ctx.entityToPackedId[tempEntityKey];
                 },
@@ -53,10 +54,11 @@ namespace Kk.LeoHot
                     {
                         return default;
                     }
+
                     TempEntityKey tempEntity = ctx.entityByPackedId[persistent];
                     return ctx.worldByName[tempEntity.world ?? ""].PackEntityWithWorld(tempEntity.entity);
                 });
-            
+
             AddIncomingLink<EcsEntityLink, EcsPackedEntityWithWorld>(
                 link => link.entity,
                 (link, entity) => link.entity = entity
@@ -89,12 +91,14 @@ namespace Kk.LeoHot
 
         public void PackState(EcsSystems ecsSystems)
         {
+            CheckComponentsSerializable(ecsSystems);
+
             _packContext = new PackContext
             {
                 entityToPackedId = new Dictionary<TempEntityKey, int>(),
                 worldToName = new Dictionary<EcsWorld, string>()
             };
-            
+
             Dictionary<string, EcsWorld> allNamedWorlds = ecsSystems.GetAllNamedWorlds();
             worlds = new SerializableWorld[1 + allNamedWorlds.Count];
 
@@ -119,7 +123,7 @@ namespace Kk.LeoHot
                 PackWorld(entry.Key, entry.Value, ref worlds[j]);
                 j++;
             }
-            
+
             unityLinks = new List<IncomingLinkState>();
             foreach (IncomingLink def in _linkedObjectDefs)
             {
@@ -136,6 +140,36 @@ namespace Kk.LeoHot
             }
         }
 
+        private void CheckComponentsSerializable(EcsSystems ecsSystems)
+        {
+            CheckComponentsSerializable(ecsSystems.GetWorld());
+            foreach (KeyValuePair<string, EcsWorld> entry in ecsSystems.GetAllNamedWorlds())
+            {
+                CheckComponentsSerializable(entry.Value);
+            }
+        }
+
+        private void CheckComponentsSerializable(EcsWorld world)
+        {
+            int i = 0;
+            while (true)
+            {
+                IEcsPool pool = world.GetPoolById(i);
+                if (pool == null)
+                {
+                    break;
+                }
+
+                Type type = pool.GetComponentType();
+                if (type.GetCustomAttribute<SerializableAttribute>() == null)
+                {
+                    Debug.LogError($"component is not serializable: {type}");
+                }
+
+                i++;
+            }
+        }
+
         public void UnpackState(EcsSystems ecsSystems)
         {
             _unpackContext = new UnpackContext
@@ -145,7 +179,7 @@ namespace Kk.LeoHot
             };
 
             _unpackContext.worldByName[""] = ecsSystems.GetWorld();
-            foreach (KeyValuePair<string,EcsWorld> pair in ecsSystems.GetAllNamedWorlds())
+            foreach (KeyValuePair<string, EcsWorld> pair in ecsSystems.GetAllNamedWorlds())
             {
                 _unpackContext.worldByName[pair.Key] = pair.Value;
             }
@@ -167,8 +201,10 @@ namespace Kk.LeoHot
 
                 foreach (SerializableEntity entity in serializedWorld.entities)
                 {
-                    foreach (int component in entity.components)
+                    entity.cachedComponents = new object[entity.components.Count];
+                    for (var i = 0; i < entity.components.Count; i++)
                     {
+                        int component = entity.components[i];
                         object finalValue = unpacked[component];
                         if (finalValue != null)
                         {
@@ -177,12 +213,14 @@ namespace Kk.LeoHot
                             IEcsPool pool = (IEcsPool)getPool.Invoke(world, Array.Empty<object>());
                             pool.AddRaw(_unpackContext.entityByPackedId[entity.packedId].entity, finalValue);
                         }
+
+                        entity.cachedComponents[i] = finalValue;
                     }
                 }
             }
 
             Dictionary<Type, IncomingLink> defs = _linkedObjectDefs.ToDictionary(it => it.ownerType);
-            
+
             foreach (IncomingLinkState o in unityLinks)
             {
                 object state = unpacked[o.packedStateId];
@@ -257,6 +295,11 @@ namespace Kk.LeoHot
     {
         public string name;
         public SerializableEntity[] entities;
+
+        public override string ToString()
+        {
+            return $"{nameof(name)}: {name}, {nameof(entities)}: {entities.Length}";
+        }
     }
 
     [Serializable]
@@ -264,8 +307,15 @@ namespace Kk.LeoHot
     {
         public int packedId;
         public List<int> components;
+        public object[] cachedComponents;
+
+        public override string ToString()
+        {
+            return
+                $"{nameof(packedId)}: {packedId}, {nameof(cachedComponents)}: ({components?.Count})[{string.Join(", ", cachedComponents?.Select(it => (it?.GetType())?.Name) ?? new List<string>())}]";
+        }
     }
-    
+
     public readonly struct TempEntityKey : IEquatable<TempEntityKey>
     {
         public readonly string world;
@@ -277,7 +327,8 @@ namespace Kk.LeoHot
             this.entity = entity;
         }
 
-        public override string ToString() {
+        public override string ToString()
+        {
             return $"{nameof(world)}: {world}, {nameof(entity)}: {entity}";
         }
 
