@@ -20,6 +20,7 @@ namespace Kk.LeoHot
         [SerializeField] private List<int> references = new List<int>();
         [SerializeField] private List<Object> unityReferences = new List<Object>();
         [SerializeField] private List<ReferenceType> referenceTypes = new List<ReferenceType>();
+        [SerializeField] private List<Sequence> sequences = new List<Sequence>();
 
         private Dictionary<Type, int> _referenceTypes = new Dictionary<Type, int>();
         private Dictionary<object, Value> _dynamicReferences = new Dictionary<object, Value>();
@@ -31,7 +32,8 @@ namespace Kk.LeoHot
             _customizers[typeof(TRuntime)] = new TypeCustomizer
             {
                 pack = o => pack((TRuntime)o),
-                unpack = o => unpack((TPersistent)o)
+                unpack = o => unpack((TPersistent)o),
+                defaultPackedValue = typeof(TPersistent).IsValueType ? (object)Activator.CreateInstance<TPersistent>() : null
             };
         }
 
@@ -67,7 +69,7 @@ namespace Kk.LeoHot
                 Property property = new Property();
                 property.name = field.Name;
                 property.value = PackValue(field.GetValue(obj), field.GetCustomAttribute<SerializeReference>() != null);
-                if (property.value.elements != null || property.value.ownType != ValueType.None)
+                if (property.value.type != ValueType.None)
                 {
                     instance.properties.Add(property);
                 }
@@ -94,10 +96,10 @@ namespace Kk.LeoHot
             pool.Add(value);
             return new Value
             {
-                runtimeType = originalType,
-                storedType = -1,
-                ownType = type,
-                ownIndex = valueIndex
+                originalType = originalType,
+                convertedType = -1,
+                type = type,
+                index = valueIndex
             };
         }
 
@@ -127,22 +129,25 @@ namespace Kk.LeoHot
 
             if (typeAfterConvert.IsArray)
             {
+                List<Value> elements = new List<Value>();
                 Value persistentValue = new Value
                 {
-                    elements = new List<Value>(),
-                    runtimeType = PackType(typeBeforeConvert),
-                    storedType = PackType(typeAfterConvert)
+                    type = ValueType.Sequence,
+                    index = sequences.Count,
+                    originalType = PackType(typeBeforeConvert),
+                    convertedType = PackType(typeAfterConvert)
                 };
+                sequences.Add(new Sequence { elements = elements });
                 Array a = (Array)value;
                 for (int i = 0; i < a.Length; i++)
                 {
                     Value item = PackValue(a.GetValue(i), dynamic);
-                    if (item.elements != null)
+                    if (item.type == ValueType.Sequence)
                     {
                         throw new Exception("multidimensional arrays and lists not supported. " + typeBeforeConvert);
                     }
 
-                    persistentValue.elements.Add(item);
+                    elements.Add(item);
                 }
 
                 return persistentValue;
@@ -150,22 +155,25 @@ namespace Kk.LeoHot
 
             if (typeAfterConvert.IsGenericType && typeAfterConvert.GetGenericTypeDefinition() == typeof(List<>))
             {
+                List<Value> elements = new List<Value>();
                 Value persistentValue = new Value
                 {
-                    elements = new List<Value>(),
-                    runtimeType = PackType(typeBeforeConvert),
-                    storedType = PackType(typeAfterConvert)
+                    type = ValueType.Sequence,
+                    index = sequences.Count,
+                    originalType = PackType(typeBeforeConvert),
+                    convertedType = PackType(typeAfterConvert)
                 };
+                sequences.Add(new Sequence { elements = elements });
                 IList a = (IList)value;
                 foreach (object v in a)
                 {
                     Value item = PackValue(v, dynamic);
-                    if (item.elements != null)
+                    if (item.type == ValueType.Sequence)
                     {
                         throw new Exception("multidimensional arrays and lists not supported. " + typeBeforeConvert);
                     }
 
-                    persistentValue.elements.Add(item);
+                    elements.Add(item);
                 }
 
                 return persistentValue;
@@ -199,6 +207,16 @@ namespace Kk.LeoHot
             }
 
             return value;
+        }
+
+        private object CustomizeUnpack(IReadOnlyList<Type> types, Value value, object o)
+        {
+            if (_customizers.TryGetValue(types[value.originalType], out var customizer))
+            {
+                o = customizer.unpack(o ?? customizer.defaultPackedValue);
+            }
+
+            return o;
         }
 
         public Dictionary<int, object> Unpack()
@@ -250,25 +268,23 @@ namespace Kk.LeoHot
         {
             object result = UnpackValueInternal(types, unpacked, value);
 
-            if (_customizers.TryGetValue(types[value.runtimeType], out var customizer))
-            {
-                result = customizer.unpack(result);
-            }
+            result = CustomizeUnpack(types, value, result);
 
             return result;
         }
 
         private object UnpackValueInternal(IReadOnlyList<Type> types, Dictionary<int, object> unpacked, Value value)
         {
-            if (value.storedType >= 0)
+            if (value.type == ValueType.Sequence)
             {
-                Type type = types[value.storedType];
+                List<Value> elements = sequences[value.index].elements;
+                Type type = types[value.convertedType];
                 if (type.IsArray)
                 {
-                    Array array = Array.CreateInstance(type.GetElementType() ?? throw new Exception("WTF"), value.elements.Count);
-                    for (int i = 0; i < value.elements.Count; i++)
+                    Array array = Array.CreateInstance(type.GetElementType() ?? throw new Exception("WTF"), elements.Count);
+                    for (int i = 0; i < elements.Count; i++)
                     {
-                        Value singular = value.elements[i];
+                        Value singular = elements[i];
                         array.SetValue(UnpackValue(types, unpacked, singular), i);
                     }
 
@@ -278,16 +294,18 @@ namespace Kk.LeoHot
                 if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
                 {
                     IList list = (IList)Activator.CreateInstance(type);
-                    foreach (Value singular in value.elements)
+                    foreach (Value singular in elements)
                     {
                         list.Add(UnpackValue(types, unpacked, singular));
                     }
 
                     return list;
                 }
+
+                throw new Exception($"unsupported container: {type}");
             }
 
-            return UnpackSingular(value.ownType, value.ownIndex, unpacked);
+            return UnpackSingular(value.type, value.index, unpacked);
         }
 
         private object UnpackSingular(ValueType type, int valueIndex, Dictionary<int, object> unpacked)
@@ -316,23 +334,31 @@ namespace Kk.LeoHot
 
     internal struct TypeCustomizer
     {
+        internal object defaultPackedValue;
         internal Func<object, object> pack;
         internal Func<object, object> unpack;
     }
 
     [Serializable]
-    internal struct Value
+    internal struct Sequence
     {
         public List<Value> elements;
-        public ValueType ownType;
-        public int ownIndex;
-        public int storedType;
-        public int runtimeType;
+    }
+
+    [Serializable]
+    internal struct Value
+    {
+        public ValueType type;
+        public int index;
+        // after applying customizer packing
+        public int convertedType;
+        // before last customizer packing. but maybe after previous, because they can be chained in some cases (with the value and then with array items or struct fields)
+        public int originalType;
 
         public override string ToString()
         {
             return
-                $"{nameof(ownType)}: {ownType}, {nameof(ownIndex)}: {ownIndex}, {nameof(runtimeType)}: {runtimeType}, {nameof(storedType)}: {storedType}, {nameof(elements)}: [{(elements == null ? "" : string.Join(",", elements))}]";
+                $"{nameof(type)}: {type}, {nameof(index)}: {index}, {nameof(originalType)}: {originalType}, {nameof(convertedType)}: {convertedType}";
         }
     }
 
@@ -382,5 +408,6 @@ namespace Kk.LeoHot
         Bool,
         Reference,
         UnityReference,
+        Sequence,
     }
 }
