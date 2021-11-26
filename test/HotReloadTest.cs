@@ -4,6 +4,7 @@ using System.Linq;
 using Kk.LeoHot;
 using Leopotam.EcsLite;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -79,6 +80,27 @@ namespace Kk.LeoHot
                     Assert.AreEqual(42, systems.GetWorld().GetPool<Comp1>().Get(a).value);
                 }
             );
+        }
+
+        [Test]
+        public void TestIncomingLink()
+        {
+            EcsEntityLink link = new GameObject().AddComponent<EcsEntityLink>();
+            Test(
+                (systems, universe) => { },
+                systems =>
+                {
+                    int a = systems.GetWorld().NewEntity();
+                    systems.GetWorld().GetPool<Comp1>().Add(a).value = 42;
+                    link.entity = systems.GetWorld().PackEntityWithWorld(a);
+                },
+                systems =>
+                {
+                    Assert.True(link.entity.Unpack(out var world, out var entity));
+                    Assert.AreEqual(42, world.GetPool<Comp1>().Get(entity).value);
+                }
+            );
+            Object.DestroyImmediate(link.gameObject);
         }
 
         private static int SingleEntity(EcsFilter filter)

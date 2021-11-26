@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Leopotam.EcsLite;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Kk.LeoHot
 {
@@ -10,10 +12,27 @@ namespace Kk.LeoHot
     public class SerializableEcsUniverse
     {
         [SerializeField] private SerializableWorld[] worlds;
-        [SerializeField] private SerializableObjectContainer componentData = new SerializableObjectContainer();
+        [SerializeField] private SerializableObjectContainer objects = new SerializableObjectContainer();
 
         private PackContext _packContext;
         private UnpackContext _unpackContext;
+
+        [SerializeField] private List<IncomingLinkState> unityLinks;
+
+        private List<IncomingLink> _linkedObjectDefs = new List<IncomingLink>();
+
+        [Serializable]
+        private struct IncomingLinkState
+        {
+            public Object linkOwner;
+            public int packedStateId;
+        }
+        private struct IncomingLink
+        {
+            internal Type ownerType;
+            internal Func<Object, object> pack;
+            internal Action<Object, object> unpack;
+        }
 
         public SerializableEcsUniverse()
         {
@@ -22,15 +41,39 @@ namespace Kk.LeoHot
                 (runtime, ctx) =>
                 {
                     if (!runtime.Unpack(out EcsWorld world, out int entity))
+                    {
                         return 0;
+                    }
                     TempEntityKey tempEntityKey = new TempEntityKey(ctx.worldToName[world], entity);
                     return ctx.entityToPackedId[tempEntityKey];
                 },
                 (persistent, ctx) =>
                 {
+                    if (persistent == 0)
+                    {
+                        return default;
+                    }
                     TempEntityKey tempEntity = ctx.entityByPackedId[persistent];
                     return ctx.worldByName[tempEntity.world ?? ""].PackEntityWithWorld(tempEntity.entity);
                 });
+            
+            AddIncomingLink<EcsEntityLink, EcsPackedEntityWithWorld>(
+                link => link.entity,
+                (link, entity) => link.entity = entity
+            );
+        }
+
+        public void AddIncomingLink<TUnityObject, TEcsState>(
+            Func<TUnityObject, TEcsState> pack,
+            Action<TUnityObject, TEcsState> unpack
+        ) where TUnityObject : Object
+        {
+            _linkedObjectDefs.Add(new IncomingLink
+            {
+                ownerType = typeof(TUnityObject),
+                pack = o => pack((TUnityObject)o),
+                unpack = (uo, o) => unpack((TUnityObject)uo, (TEcsState)o)
+            });
         }
 
         public void AddConverter<TRuntime, TPersistent>(
@@ -38,7 +81,7 @@ namespace Kk.LeoHot
             Unpack<TPersistent, TRuntime> unpack
         )
         {
-            componentData.AddConverter<TRuntime, TPersistent>(
+            objects.AddConverter<TRuntime, TPersistent>(
                 runtime => pack(runtime, _packContext),
                 persistent => unpack(persistent, _unpackContext)
             );
@@ -46,22 +89,50 @@ namespace Kk.LeoHot
 
         public void PackState(EcsSystems ecsSystems)
         {
+            _packContext = new PackContext
+            {
+                entityToPackedId = new Dictionary<TempEntityKey, int>(),
+                worldToName = new Dictionary<EcsWorld, string>()
+            };
+            
             Dictionary<string, EcsWorld> allNamedWorlds = ecsSystems.GetAllNamedWorlds();
             worlds = new SerializableWorld[1 + allNamedWorlds.Count];
 
-            Dictionary<EcsWorld, string> nameByWorld = new Dictionary<EcsWorld, string>();
-            nameByWorld[ecsSystems.GetWorld()] = null;
+            _packContext.worldToName[ecsSystems.GetWorld()] = null;
             foreach (KeyValuePair<string, EcsWorld> pair in ecsSystems.GetAllNamedWorlds())
             {
-                nameByWorld[pair.Value] = pair.Key;
+                _packContext.worldToName[pair.Value] = pair.Key;
             }
 
-            PrepareSerializeWorld("", ecsSystems.GetWorld(), out worlds[0], nameByWorld);
+            PrepareSerializeWorld("", ecsSystems.GetWorld(), out worlds[0]);
             int i = 1;
             foreach (KeyValuePair<string, EcsWorld> entry in allNamedWorlds)
             {
-                PrepareSerializeWorld(entry.Key, entry.Value, out worlds[i], nameByWorld);
+                PrepareSerializeWorld(entry.Key, entry.Value, out worlds[i]);
                 i++;
+            }
+
+            PackWorld("", ecsSystems.GetWorld(), ref worlds[0]);
+            int j = 1;
+            foreach (KeyValuePair<string, EcsWorld> entry in allNamedWorlds)
+            {
+                PackWorld(entry.Key, entry.Value, ref worlds[j]);
+                j++;
+            }
+            
+            unityLinks = new List<IncomingLinkState>();
+            foreach (IncomingLink def in _linkedObjectDefs)
+            {
+                foreach (Object o in Object.FindObjectsOfType(def.ownerType))
+                {
+                    object value = def.pack(o);
+                    int valueId = objects.Pack(value);
+                    unityLinks.Add(new IncomingLinkState
+                    {
+                        packedStateId = valueId,
+                        linkOwner = o
+                    });
+                }
             }
         }
 
@@ -88,7 +159,7 @@ namespace Kk.LeoHot
                 }
             }
 
-            Dictionary<int, object> unpacked = componentData.Unpack();
+            Dictionary<int, object> unpacked = objects.Unpack();
 
             foreach (SerializableWorld serializedWorld in worlds)
             {
@@ -109,26 +180,34 @@ namespace Kk.LeoHot
                     }
                 }
             }
+
+            Dictionary<Type, IncomingLink> defs = _linkedObjectDefs.ToDictionary(it => it.ownerType);
+            
+            foreach (IncomingLinkState o in unityLinks)
+            {
+                object state = unpacked[o.packedStateId];
+                defs[o.linkOwner.GetType()].unpack(o.linkOwner, state);
+            }
         }
 
-        private void PrepareSerializeWorld(string worldName, EcsWorld world, out SerializableWorld result, Dictionary<EcsWorld, string> nameByWorld)
+        private void PrepareSerializeWorld(string worldName, EcsWorld world, out SerializableWorld result)
         {
             int[] entities = null;
             world.GetAllEntities(ref entities);
 
             result.name = worldName;
             result.entities = new SerializableEntity[entities.Length];
-
-            _packContext = new PackContext
-            {
-                entityToPackedId = new Dictionary<TempEntityKey, int>(),
-                worldToName = nameByWorld
-            };
             for (var i = 0; i < entities.Length; i++)
             {
                 int entity = entities[i];
                 _packContext.entityToPackedId[new TempEntityKey(worldName, entity)] = i + 1;
             }
+        }
+
+        private void PackWorld(string worldName, EcsWorld world, ref SerializableWorld result)
+        {
+            int[] entities = null;
+            world.GetAllEntities(ref entities);
 
             for (var ei = 0; ei < entities.Length; ei++)
             {
@@ -145,7 +224,7 @@ namespace Kk.LeoHot
                         continue;
                     }
 
-                    serializableComponents.Add(componentData.Pack(t));
+                    serializableComponents.Add(objects.Pack(t));
                 }
 
                 result.entities[ei] = new SerializableEntity

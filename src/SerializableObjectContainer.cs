@@ -11,8 +11,8 @@ namespace Kk.LeoHot
     [Serializable]
     public class SerializableObjectContainer
     {
-        [SerializeField] private List<int> roots = new List<int>();
-        [SerializeField] private List<SerializableStruct> instances = new List<SerializableStruct>();
+        [SerializeField] private List<Value> roots = new List<Value>();
+        [SerializeField] private List<SerializableStruct> structs = new List<SerializableStruct>();
         [SerializeField] private List<int> ints = new List<int>();
         [SerializeField] private List<string> strings = new List<string>();
         [SerializeField] private List<float> floats = new List<float>();
@@ -22,7 +22,7 @@ namespace Kk.LeoHot
         [SerializeField] private List<ReferenceType> referenceTypes = new List<ReferenceType>();
 
         private Dictionary<Type, int> _referenceTypes = new Dictionary<Type, int>();
-        private Dictionary<object, int> _dynamicReferences = new Dictionary<object, int>();
+        private Dictionary<object, Value> _dynamicReferences = new Dictionary<object, Value>();
 
         private Dictionary<Type, TypeCustomizer> _customizers = new Dictionary<Type, TypeCustomizer>();
 
@@ -37,41 +37,26 @@ namespace Kk.LeoHot
 
         public int Pack(object obj)
         {
-            int instance = PackInternal(obj, dynamic: true);
-            roots.Add(instance);
-            return instance;
+            Value value = PackValue(obj, true);
+            var id = roots.Count;
+            roots.Add(value);
+            return id;
         }
 
-        private int PackInternal(object obj, bool dynamic = false)
+        private int PackStruct(object obj)
         {
             if (obj == null)
             {
                 return -1;
             }
 
-            if (dynamic)
-            {
-                if (_dynamicReferences.TryGetValue(obj, out var existingInstance))
-                {
-                    return existingInstance;
-                }
-            }
-
-            Type originalType = obj.GetType();
-            Type type = originalType;
-
-            if (_customizers.TryGetValue(type, out var customizer))
-            {
-                obj = customizer.pack(obj);
-                type = obj.GetType();
-            }
-
             SerializableStruct instance = new SerializableStruct();
 
-            instance.id = instances.Count;
-            instances.Add(instance);
+            instance.id = structs.Count;
+            instance.type = PackType(obj.GetType());
+            structs.Add(instance);
 
-            foreach (FieldInfo field in type.GetFields(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance))
+            foreach (FieldInfo field in obj.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance))
             {
                 if (!field.IsPublic && field.GetCustomAttribute<SerializeField>() == null ||
                     field.GetCustomAttribute<NonSerializedAttribute>() != null)
@@ -80,22 +65,13 @@ namespace Kk.LeoHot
                 }
 
                 Property property = new Property();
-                property.value = new List<int>();
                 property.name = field.Name;
-                PackValue(field.GetValue(obj), ref property, field.GetCustomAttribute<SerializeReference>() != null);
-                if (property.value.Count > 0)
+                property.value = PackValue(field.GetValue(obj), field.GetCustomAttribute<SerializeReference>() != null);
+                if (property.value.elements != null || property.value.ownType != ValueType.None)
                 {
                     instance.properties.Add(property);
                 }
             }
-
-            if (dynamic)
-            {
-                _dynamicReferences[obj] = instance.id;
-            }
-
-            instance.type = PackType(type);
-            instance.runtimeType = PackType(originalType);
 
             return instance.id;
         }
@@ -112,60 +88,117 @@ namespace Kk.LeoHot
             return refType;
         }
 
-        private void PackValueInternal<T>(ref Property property, ValueType type, List<T> pool, T value)
+        private Value PackSingular<T>(ValueType type, ICollection<T> pool, T value, int originalType)
         {
             int valueIndex = pool.Count;
             pool.Add(value);
-            property.type = type;
-            property.value.Add(valueIndex);
+            return new Value
+            {
+                runtimeType = originalType,
+                storedType = -1,
+                ownType = type,
+                ownIndex = valueIndex
+            };
         }
 
-        private void PackValue(object value, ref Property property, bool serializeReference)
+        private Value PackValue(object value, bool dynamic)
+        {
+            if (dynamic)
+            {
+                if (_dynamicReferences.TryGetValue(value, out var existingInstance))
+                {
+                    return existingInstance;
+                }
+            }
+
+            return PackValueInternal(value, dynamic);
+        }
+
+        private Value PackValueInternal(object value, bool dynamic)
         {
             if (value == null)
             {
-                property.type = ValueType.Null;
-                return;
+                return new Value();
             }
 
-            Type originalType = value.GetType();
-            Type type = originalType;
+            Type typeBeforeConvert = value.GetType();
+            value = CustomizePack(value, typeBeforeConvert);
+            Type typeAfterConvert = value.GetType();
 
-            property.runtimeType = PackType(originalType);
-
-            if (_customizers.TryGetValue(type, out TypeCustomizer customizer))
+            if (typeAfterConvert.IsArray)
             {
-                value = customizer.pack(value);
-                type = value.GetType();
-            }
-
-            if (type == typeof(int)) PackValueInternal(ref property, ValueType.Int, ints, (int)value);
-            else if (type == typeof(string)) PackValueInternal(ref property, ValueType.String, strings, (string)value);
-            else if (type == typeof(float)) PackValueInternal(ref property, ValueType.Float, floats, (float)value);
-            else if (type == typeof(bool)) PackValueInternal(ref property, ValueType.Bool, bools, (bool)value);
-            else if (typeof(Object).IsAssignableFrom(type))
-                PackValueInternal(ref property, ValueType.UnityReference, unityReferences, (Object)value);
-            else if (type.IsArray)
-            {
+                Value persistentValue = new Value
+                {
+                    elements = new List<Value>(),
+                    runtimeType = PackType(typeBeforeConvert),
+                    storedType = PackType(typeAfterConvert)
+                };
                 Array a = (Array)value;
                 for (int i = 0; i < a.Length; i++)
                 {
-                    PackValue(a.GetValue(i), ref property, serializeReference);
+                    Value item = PackValue(a.GetValue(i), dynamic);
+                    if (item.elements != null)
+                    {
+                        throw new Exception("multidimensional arrays and lists not supported. " + typeBeforeConvert);
+                    }
+
+                    persistentValue.elements.Add(item);
                 }
+
+                return persistentValue;
             }
-            else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+
+            if (typeAfterConvert.IsGenericType && typeAfterConvert.GetGenericTypeDefinition() == typeof(List<>))
             {
+                Value persistentValue = new Value
+                {
+                    elements = new List<Value>(),
+                    runtimeType = PackType(typeBeforeConvert),
+                    storedType = PackType(typeAfterConvert)
+                };
                 IList a = (IList)value;
                 foreach (object v in a)
                 {
-                    PackValue(v, ref property, serializeReference);
+                    Value item = PackValue(v, dynamic);
+                    if (item.elements != null)
+                    {
+                        throw new Exception("multidimensional arrays and lists not supported. " + typeBeforeConvert);
+                    }
+
+                    persistentValue.elements.Add(item);
                 }
+
+                return persistentValue;
             }
-            else if (type.GetCustomAttribute<SerializableAttribute>() != null)
+
+            if (typeAfterConvert == typeof(int)) return PackSingular(ValueType.Int, ints, (int)value, PackType(typeBeforeConvert));
+
+            if (typeAfterConvert == typeof(string)) return PackSingular(ValueType.String, strings, (string)value, PackType(typeBeforeConvert));
+
+            if (typeAfterConvert == typeof(float)) return PackSingular(ValueType.Float, floats, (float)value, PackType(typeBeforeConvert));
+
+            if (typeAfterConvert == typeof(bool)) return PackSingular(ValueType.Bool, bools, (bool)value, PackType(typeBeforeConvert));
+
+            if (typeof(Object).IsAssignableFrom(typeAfterConvert))
+                return PackSingular(ValueType.UnityReference, unityReferences, (Object)value, PackType(typeBeforeConvert));
+
+            if (typeAfterConvert.GetCustomAttribute<SerializableAttribute>() != null)
             {
-                int reference = PackInternal(value, serializeReference);
-                PackValueInternal(ref property, ValueType.Reference, references, reference);
+                int reference = PackStruct(value);
+                return PackSingular(ValueType.Reference, references, reference, PackType(typeBeforeConvert));
             }
+
+            return new Value();
+        }
+
+        private object CustomizePack(object value, Type originalType)
+        {
+            if (_customizers.TryGetValue(originalType, out TypeCustomizer customizer))
+            {
+                value = customizer.pack(value);
+            }
+
+            return value;
         }
 
         public Dictionary<int, object> Unpack()
@@ -179,7 +212,7 @@ namespace Kk.LeoHot
             }
 
             Dictionary<int, object> unpacked = new Dictionary<int, object>();
-            foreach (SerializableStruct instance in instances)
+            foreach (SerializableStruct instance in structs)
             {
                 Type type = types[instance.type];
                 object o = Activator.CreateInstance(type);
@@ -187,74 +220,81 @@ namespace Kk.LeoHot
             }
 
             // unpacking order is inverse of packing order to correctly fill nested structs
-            for (var index = instances.Count - 1; index >= 0; index--)
+            for (var index = structs.Count - 1; index >= 0; index--)
             {
-                SerializableStruct instance = instances[index];
-                Type runtimeType = types[instance.runtimeType];
+                SerializableStruct instance = structs[index];
                 Type type = types[instance.type];
                 object o = unpacked[instance.id];
                 foreach (Property property in instance.properties)
                 {
-                    Type propertyRuntimeType = types[property.runtimeType];
                     FieldInfo field = type.GetField(property.name, BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-                    if (field.FieldType.IsArray)
-                    {
-                        Array array = Array.CreateInstance(field.FieldType.GetElementType() ?? throw new Exception("WTF"), property.value.Count);
-                        for (int i = 0; i < property.value.Count; i++)
-                        {
-                            array.SetValue(GetFromPool(property.type, propertyRuntimeType, property.value[i], unpacked), i);
-                        }
-
-                        field.SetValue(o, array);
-                    }
-                    else if (field.FieldType.IsGenericType && field.FieldType.GetGenericTypeDefinition() == typeof(List<>))
-                    {
-                        IList list = (IList)Activator.CreateInstance(field.FieldType);
-                        foreach (int value in property.value)
-                        {
-                            list.Add(GetFromPool(property.type, propertyRuntimeType, value, unpacked));
-                        }
-
-                        field.SetValue(o, list);
-                    }
-                    else
-                    {
-                        field.SetValue(o, GetFromPool(property.type, propertyRuntimeType, property.value.Single(), unpacked));
-                    }
-                }
-
-                if (_customizers.TryGetValue(runtimeType, out var customizer))
-                {
-                    o = customizer.unpack(o);
+                    object propertyValue = UnpackValue(types, unpacked, property.value);
+                    field.SetValue(o, propertyValue);
                 }
 
                 unpacked[instance.id] = o;
             }
 
             Dictionary<int, object> unpackedRoots = new Dictionary<int, object>();
-            foreach (int root in roots)
+            for (var i = 0; i < roots.Count; i++)
             {
-                unpackedRoots[root] = unpacked[root];
+                object value = UnpackValue(types, unpacked, roots[i]);
+
+                unpackedRoots[i] = value;
             }
 
             return unpackedRoots;
         }
 
-        private object GetFromPool(ValueType type, Type runtimeType, int valueIndex, Dictionary<int, object> unpacked)
+        private object UnpackValue(IReadOnlyList<Type> types, Dictionary<int, object> unpacked, Value value)
         {
-            object raw = GetPoolRaw(type, valueIndex, unpacked);
-            if (_customizers.TryGetValue(runtimeType, out var customizer))
+            object result = UnpackValueInternal(types, unpacked, value);
+
+            if (_customizers.TryGetValue(types[value.runtimeType], out var customizer))
             {
-                return customizer.unpack(raw);
+                result = customizer.unpack(result);
             }
-            return raw;
+
+            return result;
         }
 
-        private object GetPoolRaw(ValueType type, int valueIndex, Dictionary<int, object> unpacked)
+        private object UnpackValueInternal(IReadOnlyList<Type> types, Dictionary<int, object> unpacked, Value value)
+        {
+            if (value.storedType >= 0)
+            {
+                Type type = types[value.storedType];
+                if (type.IsArray)
+                {
+                    Array array = Array.CreateInstance(type.GetElementType() ?? throw new Exception("WTF"), value.elements.Count);
+                    for (int i = 0; i < value.elements.Count; i++)
+                    {
+                        Value singular = value.elements[i];
+                        array.SetValue(UnpackValue(types, unpacked, singular), i);
+                    }
+
+                    return array;
+                }
+
+                if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+                {
+                    IList list = (IList)Activator.CreateInstance(type);
+                    foreach (Value singular in value.elements)
+                    {
+                        list.Add(UnpackValue(types, unpacked, singular));
+                    }
+
+                    return list;
+                }
+            }
+
+            return UnpackSingular(value.ownType, value.ownIndex, unpacked);
+        }
+
+        private object UnpackSingular(ValueType type, int valueIndex, Dictionary<int, object> unpacked)
         {
             switch (type)
             {
-                case ValueType.Null:
+                case ValueType.None:
                     return null;
                 case ValueType.Int:
                     return ints[valueIndex];
@@ -273,19 +313,37 @@ namespace Kk.LeoHot
             }
         }
     }
-    
+
     internal struct TypeCustomizer
     {
         internal Func<object, object> pack;
         internal Func<object, object> unpack;
     }
 
-    [Serializable] internal struct ReferenceType
+    [Serializable]
+    internal struct Value
+    {
+        public List<Value> elements;
+        public ValueType ownType;
+        public int ownIndex;
+        public int storedType;
+        public int runtimeType;
+
+        public override string ToString()
+        {
+            return
+                $"{nameof(ownType)}: {ownType}, {nameof(ownIndex)}: {ownIndex}, {nameof(runtimeType)}: {runtimeType}, {nameof(storedType)}: {storedType}, {nameof(elements)}: [{(elements == null ? "" : string.Join(",", elements))}]";
+        }
+    }
+
+    [Serializable]
+    internal struct ReferenceType
     {
         public string assembly;
         public string type;
 
-        public override string ToString() {
+        public override string ToString()
+        {
             return $"{nameof(assembly)}: {assembly}, {nameof(type)}: {type}";
         }
     }
@@ -296,10 +354,10 @@ namespace Kk.LeoHot
         public int id;
         public List<Property> properties = new List<Property>();
         public int type = -1;
-        public int runtimeType;
 
-        public override string ToString() {
-            return $"{nameof(properties)}: {properties.Count}, {nameof(type)}: {type}, {nameof(runtimeType)}: {runtimeType}";
+        public override string ToString()
+        {
+            return $"{nameof(properties)}: {properties.Count}, {nameof(type)}: {type}";
         }
     }
 
@@ -307,19 +365,17 @@ namespace Kk.LeoHot
     internal struct Property
     {
         public string name;
-        public List<int> value;
-        public ValueType type;
-        public int runtimeType;
+        public Value value;
 
         public override string ToString()
         {
-            return $"{nameof(name)}: {name}, {nameof(value)}: [{string.Join(",", value)}], {nameof(type)}: {type}, {nameof(runtimeType)}: {runtimeType}";
+            return $"{nameof(name)}: {name}, {nameof(value)}: {value}";
         }
     }
 
     internal enum ValueType
     {
-        Null,
+        None,
         Int,
         Float,
         String,
