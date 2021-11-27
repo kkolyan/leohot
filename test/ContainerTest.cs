@@ -12,6 +12,7 @@ namespace Kk.LeoHot
         [Serializable] private struct SF { public float value; }
         [Serializable] private struct SB { public bool value; }
         [Serializable] private struct SS { public string value; }
+        [Serializable] private struct SV { public Vector3 value; }
         [Serializable] private struct SU { public Object value; }
         [Serializable] private struct SD { [SerializeReference] public object value; }
         [Serializable] private struct SR { public SI value; }
@@ -80,6 +81,22 @@ namespace Kk.LeoHot
                     object o = objects[a];
                     Assert.AreEqual(typeof(SS), o.GetType());
                     Assert.AreEqual("42", ((SS)o).value);
+                }
+            );
+        }
+
+        [Test]
+        public void TestVector()
+        {
+            int a = 0;
+            Test(
+                container => { },
+                container => { a = container.Pack(new SV { value = new Vector3(42, 17, -1) }); },
+                objects =>
+                {
+                    object o = objects[a];
+                    Assert.AreEqual(typeof(SV), o.GetType());
+                    Assert.AreEqual(new Vector3(42, 17, -1), ((SV)o).value);
                 }
             );
         }

@@ -27,6 +27,40 @@ namespace Kk.LeoHot
 
         private Dictionary<Type, TypeCustomizer> _customizers = new Dictionary<Type, TypeCustomizer>();
 
+        private HashSet<Type> _forceSerializableTypes = new HashSet<Type>();
+
+        public SerializableObjectContainer()
+        {
+            AddSerializable<Vector2>();
+            AddSerializable<Vector3>();
+            AddSerializable<Vector4>();
+            AddSerializable<Rect>();
+            AddSerializable<Quaternion>();
+            AddSerializable<Matrix4x4>();
+            AddSerializable<Color>();
+            AddSerializable<Color32>();
+            AddSerializable<LayerMask>();
+            AddSerializable<AnimationCurve>();
+            AddSerializable<Gradient>();
+        }
+
+        /// <summary>
+        /// if you need serialize type without SerializableAttributes
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        public void AddSerializable<T>()
+        {
+            Type type = typeof(T);
+            if (type.GetCustomAttribute<SerializableAttribute>() != null)
+            {
+                Debug.LogWarning($"type already attributed with [Serializable]: {type}");
+            }
+            else
+            {
+                _forceSerializableTypes.Add(type);
+            }
+        }
+
         public void AddConverter<TRuntime, TPersistent>(Func<TRuntime, TPersistent> pack, Func<TPersistent, TRuntime> unpack)
         {
             _customizers[typeof(TRuntime)] = new TypeCustomizer
@@ -152,7 +186,7 @@ namespace Kk.LeoHot
             if (typeof(Object).IsAssignableFrom(typeAfterConvert))
                 return PackSingular(ValueType.UnityReference, unityReferences, (Object)value, PackType(typeBeforeConvert));
 
-            if (typeAfterConvert.GetCustomAttribute<SerializableAttribute>() != null)
+            if (typeAfterConvert.GetCustomAttribute<SerializableAttribute>() != null || _forceSerializableTypes.Contains(typeAfterConvert))
             {
                 int reference = PackStruct(value);
                 return PackSingular(ValueType.Reference, references, reference, PackType(typeBeforeConvert));
