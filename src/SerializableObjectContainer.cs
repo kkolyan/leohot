@@ -31,24 +31,24 @@ namespace Kk.LeoHot
 
         public SerializableObjectContainer()
         {
-            AddSerializable<Vector2>();
-            AddSerializable<Vector3>();
-            AddSerializable<Vector4>();
-            AddSerializable<Rect>();
-            AddSerializable<Quaternion>();
-            AddSerializable<Matrix4x4>();
-            AddSerializable<Color>();
-            AddSerializable<Color32>();
-            AddSerializable<LayerMask>();
-            AddSerializable<AnimationCurve>();
-            AddSerializable<Gradient>();
+            TreatAsSerializable<Vector2>();
+            TreatAsSerializable<Vector3>();
+            TreatAsSerializable<Vector4>();
+            TreatAsSerializable<Rect>();
+            TreatAsSerializable<Quaternion>();
+            TreatAsSerializable<Matrix4x4>();
+            TreatAsSerializable<Color>();
+            TreatAsSerializable<Color32>();
+            TreatAsSerializable<LayerMask>();
+            TreatAsSerializable<AnimationCurve>();
+            TreatAsSerializable<Gradient>();
         }
 
         /// <summary>
         /// if you need serialize type without SerializableAttributes
         /// </summary>
         /// <typeparam name="T"></typeparam>
-        public void AddSerializable<T>()
+        public void TreatAsSerializable<T>()
         {
             Type type = typeof(T);
             if (type.GetCustomAttribute<SerializableAttribute>() != null)
