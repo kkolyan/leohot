@@ -3,7 +3,7 @@
 
 Unity hot-reload extension for [LeoECS Lite](https://github.com/Leopotam/ecslite).
 
-*Hot-reload* is the feature of Unity Editor that applies script changes without exiting Play Mode. 
+*Hot-reload* (officialy [Domain Reloading](https://docs.unity3d.com/2020.3/Documentation/Manual/DomainReloading.html)) is the feature of Unity Editor that applies script changes without exiting Play Mode. 
 It works by default (at least in 2021 and earlier), but can be switched off in Editor Settings.
 
 Both LeoECS (both lite and classic) frameworks doesn't support this mode in stock and requires 
