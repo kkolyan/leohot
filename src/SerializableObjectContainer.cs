@@ -69,7 +69,7 @@ namespace Kk.LeoHot
                 Property property = new Property();
                 property.name = field.Name;
                 property.value = PackValue(field.GetValue(obj), field.GetCustomAttribute<SerializeReference>() != null);
-                if (property.value.type != ValueType.None)
+                if (property.value.type != ValueType.Null)
                 {
                     instance.properties.Add(property);
                 }
@@ -94,13 +94,7 @@ namespace Kk.LeoHot
         {
             int valueIndex = pool.Count;
             pool.Add(value);
-            return new Value
-            {
-                originalType = originalType,
-                convertedType = -1,
-                type = type,
-                index = valueIndex
-            };
+            return new Value(type, valueIndex, -1, originalType);
         }
 
         private Value PackValue(object value, bool dynamic)
@@ -120,49 +114,17 @@ namespace Kk.LeoHot
         {
             if (value == null)
             {
-                return new Value();
+                return new Value(ValueType.Null, -1, -1, -1);
             }
 
             Type typeBeforeConvert = value.GetType();
             value = CustomizePack(value, typeBeforeConvert);
             Type typeAfterConvert = value.GetType();
 
-            if (typeAfterConvert.IsArray)
+            if (typeAfterConvert.IsArray || typeAfterConvert.IsGenericType && typeAfterConvert.GetGenericTypeDefinition() == typeof(List<>))
             {
                 List<Value> elements = new List<Value>();
-                Value persistentValue = new Value
-                {
-                    type = ValueType.Sequence,
-                    index = sequences.Count,
-                    originalType = PackType(typeBeforeConvert),
-                    convertedType = PackType(typeAfterConvert)
-                };
-                sequences.Add(new Sequence { elements = elements });
-                Array a = (Array)value;
-                for (int i = 0; i < a.Length; i++)
-                {
-                    Value item = PackValue(a.GetValue(i), dynamic);
-                    if (item.type == ValueType.Sequence)
-                    {
-                        throw new Exception("multidimensional arrays and lists not supported. " + typeBeforeConvert);
-                    }
-
-                    elements.Add(item);
-                }
-
-                return persistentValue;
-            }
-
-            if (typeAfterConvert.IsGenericType && typeAfterConvert.GetGenericTypeDefinition() == typeof(List<>))
-            {
-                List<Value> elements = new List<Value>();
-                Value persistentValue = new Value
-                {
-                    type = ValueType.Sequence,
-                    index = sequences.Count,
-                    originalType = PackType(typeBeforeConvert),
-                    convertedType = PackType(typeAfterConvert)
-                };
+                Value persistentValue = new Value(ValueType.Sequence, sequences.Count, PackType(typeAfterConvert), PackType(typeBeforeConvert));
                 sequences.Add(new Sequence { elements = elements });
                 IList a = (IList)value;
                 foreach (object v in a)
@@ -196,7 +158,7 @@ namespace Kk.LeoHot
                 return PackSingular(ValueType.Reference, references, reference, PackType(typeBeforeConvert));
             }
 
-            return new Value();
+            return new Value(ValueType.Null, -1, -1, -1);
         }
 
         private object CustomizePack(object value, Type originalType)
@@ -211,7 +173,7 @@ namespace Kk.LeoHot
 
         private object CustomizeUnpack(IReadOnlyList<Type> types, Value value, object o)
         {
-            if (_customizers.TryGetValue(types[value.originalType], out var customizer))
+            if (value.originalType >= 0 && _customizers.TryGetValue(types[value.originalType], out var customizer))
             {
                 o = customizer.unpack(o ?? customizer.defaultPackedValue);
             }
@@ -312,7 +274,7 @@ namespace Kk.LeoHot
         {
             switch (type)
             {
-                case ValueType.None:
+                case ValueType.Null:
                     return null;
                 case ValueType.Int:
                     return ints[valueIndex];
@@ -354,6 +316,14 @@ namespace Kk.LeoHot
         public int convertedType;
         // before last customizer packing. but maybe after previous, because they can be chained in some cases (with the value and then with array items or struct fields)
         public int originalType;
+
+        public Value(ValueType type, int index, int convertedType, int originalType)
+        {
+            this.type = type;
+            this.index = index;
+            this.convertedType = convertedType;
+            this.originalType = originalType;
+        }
 
         public override string ToString()
         {
@@ -401,7 +371,7 @@ namespace Kk.LeoHot
 
     internal enum ValueType
     {
-        None,
+        Null,
         Int,
         Float,
         String,
