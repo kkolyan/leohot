@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Leopotam.EcsLite;
+using Leopotam.Ecs;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
-namespace Kk.LeoHot
+namespace Kk.LeoHotClassic
 {
     public class HotReloadTest
     {
@@ -30,19 +30,19 @@ namespace Kk.LeoHot
                 init: (systems, universe) => { },
                 act: systems =>
                 {
-                    EcsWorld world = systems.GetWorld();
-                    int a = world.NewEntity();
-                    world.GetPool<Comp1>().Add(a);
-                    world.GetPool<Comp1>().Get(a).value = 42;
+                    EcsWorld world = systems.World;
+                    EcsEntity a = world.NewEntity();
+                    a.Get<Comp1>().value = 42;
                     GameObject hello = new GameObject("hello");
-                    world.GetPool<Comp1>().Get(a).obj = hello;
+                    a.Get<Comp1>().obj = hello;
                 },
                 verify: systems =>
                 {
                     List<Comp1> c1s = new List<Comp1>();
-                    foreach (int i in systems.GetWorld().Filter<Comp1>().End())
-                    {
-                        Comp1 comp1 = systems.GetWorld().GetPool<Comp1>().Get(i);
+                    EcsFilter filter = systems.World.GetFilter(typeof(EcsFilter<Comp1>));
+                    foreach (int i in filter) 
+                    { 
+                        Comp1 comp1 = filter.GetEntity(i).Get<Comp1>();
                         c1s.Add(comp1);
                     }
 
@@ -60,17 +60,17 @@ namespace Kk.LeoHot
                 init: (systems, universe) => { },
                 act: systems =>
                 {
-                    EcsWorld world = systems.GetWorld();
-                    int a = world.NewEntity();
-                    world.GetPool<Comp3>().Add(a);
-                    world.GetPool<Comp3>().Get(a).value = 42;
+                    EcsWorld world = systems.World;
+                    EcsEntity a = world.NewEntity();
+                    a.Get<Comp3>().value = 42;
                 },
                 verify: systems =>
                 {
                     List<Comp3> c1s = new List<Comp3>();
-                    foreach (int i in systems.GetWorld().Filter<Comp3>().End())
+                    EcsFilter filter = systems.World.GetFilter(typeof(EcsFilter<Comp3>));
+                    foreach (int i in filter)
                     {
-                        Comp3 comp1 = systems.GetWorld().GetPool<Comp3>().Get(i);
+                        Comp3 comp1 = filter.GetEntity(i).Get<Comp3>();
                         c1s.Add(comp1);
                     }
 
@@ -83,7 +83,7 @@ namespace Kk.LeoHot
         [Serializable]
         public struct Comp2
         {
-            public EcsPackedEntityWithWorld entity;
+            public EcsEntity entity;
             public int num;
         }
 
@@ -94,21 +94,21 @@ namespace Kk.LeoHot
                 init: (systems, universe) => { },
                 act: systems =>
                 {
-                    int a = systems.GetWorld().NewEntity();
-                    systems.GetWorld().GetPool<Comp1>().Add(a).value = 42;
+                    EcsEntity a = systems.World.NewEntity();
+                    a.Get<Comp1>().value = 42;
 
-                    int b = systems.GetWorld().NewEntity();
-                    systems.GetWorld().GetPool<Comp2>().Add(b);
-                    systems.GetWorld().GetPool<Comp2>().Get(b).num = 17;
-                    systems.GetWorld().GetPool<Comp2>().Get(b).entity = systems.GetWorld().PackEntityWithWorld(a);
+                    EcsEntity b = systems.World.NewEntity();
+                    b.Get<Comp2>();
+                    b.Get<Comp2>().num = 17;
+                    b.Get<Comp2>().entity = a;
                 },
                 verify: systems =>
                 {
-                    int b = SingleEntity(systems.GetWorld().Filter<Comp2>().End());
-                    Assert.AreEqual(17, systems.GetWorld().GetPool<Comp2>().Get(b).num);
-                    bool success = systems.GetWorld().GetPool<Comp2>().Get(b).entity.Unpack(out var world, out int a);
-                    Assert.True(success);
-                    Assert.AreEqual(42, systems.GetWorld().GetPool<Comp1>().Get(a).value);
+                    EcsEntity b = SingleEntity(systems.World.GetFilter(typeof(EcsFilter<Comp2>)));
+                    Assert.AreEqual(17, b.Get<Comp2>().num);
+                    EcsEntity a = b.Get<Comp2>().entity;
+                    Assert.True(a.IsAlive());
+                    Assert.AreEqual(42, a.Get<Comp1>().value);
                 }
             );
         }
@@ -123,14 +123,14 @@ namespace Kk.LeoHot
                     (systems, universe) => { },
                     systems =>
                     {
-                        int a = systems.GetWorld().NewEntity();
-                        systems.GetWorld().GetPool<Comp1>().Add(a).value = 42;
-                        link.entity = systems.GetWorld().PackEntityWithWorld(a);
+                        EcsEntity a = systems.World.NewEntity();
+                        a.Get<Comp1>().value = 42;
+                        link.entity = a;
                     },
                     systems =>
                     {
-                        Assert.True(link.entity.Unpack(out var world, out var entity));
-                        Assert.AreEqual(42, world.GetPool<Comp1>().Get(entity).value);
+                        Assert.True(link.entity.IsAlive());
+                        Assert.AreEqual(42, link.entity.Get<Comp1>().value);
                     }
                 );
             }
@@ -140,7 +140,7 @@ namespace Kk.LeoHot
             }
         }
 
-        private static int SingleEntity(EcsFilter filter)
+        private static EcsEntity SingleEntity(EcsFilter filter)
         {
             foreach (int i in filter)
             {
@@ -149,7 +149,7 @@ namespace Kk.LeoHot
                     throw new Exception("WTF");
                 }
 
-                return i;
+                return filter.GetEntity(i);
             }
 
             throw new Exception("WTF");

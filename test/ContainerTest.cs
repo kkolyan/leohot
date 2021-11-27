@@ -4,7 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Kk.LeoHot
+namespace Kk.LeoHotClassic
 {
     public class ContainerTest
     {

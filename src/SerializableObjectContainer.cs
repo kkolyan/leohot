@@ -6,7 +6,7 @@ using System.Reflection;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Kk.LeoHot
+namespace Kk.LeoHotClassic
 {
     [Serializable]
     public class SerializableObjectContainer

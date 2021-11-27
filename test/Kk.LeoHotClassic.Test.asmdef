@@ -1,11 +1,11 @@
 {
-  "name": "Kk.LeoHot.Test",
+  "name": "Kk.LeoHotClassic.Test",
   "includePlatforms": [
     "Editor"
   ],
   "references": [
-    "Leopotam.EcsLite",
-    "Kk.LeoHot",
+    "Leopotam.Ecs",
+    "Kk.LeoHotClassic",
     "UnityEditor.TestRunner",
     "UnityEngine.TestRunner"
   ],

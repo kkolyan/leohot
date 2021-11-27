@@ -1,10 +1,10 @@
-using Leopotam.EcsLite;
+using Leopotam.Ecs;
 using UnityEngine;
 
-namespace Kk.LeoHot
+namespace Kk.LeoHotClassic
 {
     public class EcsEntityLink: MonoBehaviour
     {
-        public EcsPackedEntityWithWorld entity;
+        public EcsEntity entity;
     }
 }
