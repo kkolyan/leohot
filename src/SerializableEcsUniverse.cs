@@ -151,22 +151,15 @@ namespace Kk.LeoHot
 
         private void CheckComponentsSerializable(EcsWorld world)
         {
-            int i = 0;
-            while (true)
+            IEcsPool[] pools = null;
+            world.GetAllPools(ref pools);
+            foreach (IEcsPool pool in pools)
             {
-                IEcsPool pool = world.GetPoolById(i);
-                if (pool == null)
-                {
-                    break;
-                }
-
                 Type type = pool.GetComponentType();
                 if (type.GetCustomAttribute<SerializableAttribute>() == null)
                 {
                     Debug.LogError($"component is not serializable: {type}");
                 }
-
-                i++;
             }
         }
 
