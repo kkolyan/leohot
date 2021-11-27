@@ -1,7 +1,15 @@
 
 # About
 
-Unity hot-reload extension for [LeoECS Lite](https://github.com/Leopotam/ecslite)
+Unity hot-reload extension for [LeoECS Lite](https://github.com/Leopotam/ecslite).
+
+*Hot-reload* is the feature of Unity Editor that applies script changes without exiting Play Mode. 
+It works by default (at least in 2021 and earlier), but can be switched off in Editor Settings.
+
+Both LeoECS (both lite and classic) frameworks doesn't support this mode in stock and requires 
+hot-reload switched off to avoid game crash. This library allow to enable it back.
+
+*__Notice__: Though, hot-reload may increase developer productivity, it also it requires practice and attention for good flight, because easily leads game session into incorrect state*
 
 # Features
 * Based on built-in Unity serialization
@@ -68,3 +76,6 @@ public class MyMonoBehavior: MonoBehaviour
 
 ```
 
+# Projects powered by
+
+* Hot-reload-enchanted version of the LeoECS community demo game: https://github.com/kkolyan/3D-Platformer-Lite-Hot.
