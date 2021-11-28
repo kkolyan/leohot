@@ -6,7 +6,7 @@ Unity hot-reload extension for [LeoECS Lite](https://github.com/Leopotam/ecslite
 *Hot-reload* (officialy [Domain Reloading](https://docs.unity3d.com/2020.3/Documentation/Manual/DomainReloading.html)) is the feature of Unity Editor that applies script changes without exiting Play Mode. 
 It works by default (at least in 2021 and earlier), but can be switched off in Editor Settings.
 
-Both LeoECS Lite & Classic are supposed to work with hot-reload disabled, as their state is not serializable and is truncates after hot-reload. This library is about to serialize all entities and components at right moment.
+Both LeoECS Lite & Classic are supposed to work with hot-reload disabled, as their state is not serializable and truncates after hot-reload. This library is about to serialize all entities and components at right moment.
 
 *__Notice__: Though, hot-reload may increase developer productivity, it also it requires practice and attention for good flight, because easily leads game session into incorrect state*
 
@@ -85,4 +85,4 @@ public class MyMonoBehavior: MonoBehaviour
 ### LeoECS Classic
 * https://github.com/kkolyan/unity-ecs-bubble-shooter-hot
 ### LeoECS Lite
-* https://github.com/kkolyan/3D-Platformer-Lite-Hot.
+* https://github.com/kkolyan/3D-Platformer-Lite-Hot
