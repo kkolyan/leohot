@@ -1,12 +1,12 @@
 
 # About
 
-Unity hot-reload extension for [LeoECS Lite](https://github.com/Leopotam/ecslite).
+Unity hot-reload extension for [LeoECS Lite](https://github.com/Leopotam/ecslite) and [LeoECS Classic](https://github.com/Leopotam/ecs).
 
 *Hot-reload* (officialy [Domain Reloading](https://docs.unity3d.com/2020.3/Documentation/Manual/DomainReloading.html)) is the feature of Unity Editor that applies script changes without exiting Play Mode. 
 It works by default (at least in 2021 and earlier), but can be switched off in Editor Settings.
 
-LeoECS Lite is supposed to work with hot-reload disabled, as its state is not serializable and is truncates after hot-reload. This library is about to serialize all entities and components at right moment.
+Both LeoECS Lite & Classic are supposed to work with hot-reload disabled, as their state is not serializable and is truncates after hot-reload. This library is about to serialize all entities and components at right moment.
 
 *__Notice__: Though, hot-reload may increase developer productivity, it also it requires practice and attention for good flight, because easily leads game session into incorrect state*
 
@@ -24,6 +24,12 @@ before leaving it to Unity's serializer. But transformer mimics Unity's serializ
 Implementation is simple and allocation intensive. Need to test if that's ok at least on common dataset sizes.
 
 # Installation
+### LeoECS Classic
+Add following line to `Packages/manifest.json`'s `dependencies` section:
+```
+"com.nplekhanov.csx.leohot": "https://github.com/kkolyan/leohot.git#classic",
+```
+### LeoECS Lite
 Add following line to `Packages/manifest.json`'s `dependencies` section:
 ```
 "com.nplekhanov.csx.leohot": "https://github.com/kkolyan/leohot.git",
@@ -76,5 +82,5 @@ public class MyMonoBehavior: MonoBehaviour
 ```
 
 # Projects powered by
-
+### LeoECS Lite
 * Hot-reload-enchanted version of the LeoECS community demo game: https://github.com/kkolyan/3D-Platformer-Lite-Hot.
