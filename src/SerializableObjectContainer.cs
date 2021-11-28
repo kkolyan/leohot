@@ -29,10 +29,20 @@ namespace Kk.LeoHot
 
         private HashSet<Type> _forceSerializableTypes = new HashSet<Type>();
 
+        [Serializable]
+        private struct SerializableVector3Int
+        {
+            public int x;
+            public int y;
+            public int z;
+        }
+
         public SerializableObjectContainer()
         {
             TreatAsSerializable<Vector2>();
+            TreatAsSerializable<Vector2Int>();
             TreatAsSerializable<Vector3>();
+            TreatAsSerializable<Vector3Int>();
             TreatAsSerializable<Vector4>();
             TreatAsSerializable<Rect>();
             TreatAsSerializable<Quaternion>();
@@ -42,6 +52,15 @@ namespace Kk.LeoHot
             TreatAsSerializable<LayerMask>();
             TreatAsSerializable<AnimationCurve>();
             TreatAsSerializable<Gradient>();
+            
+            AddConverter<Vector2Int, SerializableVector3Int>(
+                o => new SerializableVector3Int {x = o.x, y = o.y},
+                o => new Vector2Int(o.x, o.y)
+            );
+            AddConverter<Vector3Int, SerializableVector3Int>(
+                o => new SerializableVector3Int {x = o.x, y = o.y, z = o.z},
+                o => new Vector3Int(o.x, o.y, o.z)
+            );
         }
 
         /// <summary>
@@ -321,7 +340,12 @@ namespace Kk.LeoHot
                 case ValueType.Reference:
                     return unpacked[references[valueIndex]];
                 case ValueType.UnityReference:
-                    return unityReferences[valueIndex];
+                    Object unityReference = unityReferences[valueIndex];
+                    if (!unityReference)
+                    {
+                        return null;
+                    }
+                    return unityReference;
                 default:
                     throw new ArgumentOutOfRangeException();
             }
