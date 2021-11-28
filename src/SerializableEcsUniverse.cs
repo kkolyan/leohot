@@ -137,6 +137,10 @@ namespace Kk.LeoHotClassic
 
         public void UnpackState(EcsSystems ecsSystems)
         {
+            if (worlds == null || worlds.Length <= 0)
+            {
+                return;
+            }
             _unpackContext = new UnpackContext
             {
                 entityByPackedId = new Dictionary<int, TempEntityKey>(),
