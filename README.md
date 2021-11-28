@@ -82,5 +82,7 @@ public class MyMonoBehavior: MonoBehaviour
 ```
 
 # Projects powered by
+### LeoECS Classic
+* https://github.com/kkolyan/unity-ecs-bubble-shooter-hot
 ### LeoECS Lite
-* Hot-reload-enchanted version of the LeoECS community demo game: https://github.com/kkolyan/3D-Platformer-Lite-Hot.
+* https://github.com/kkolyan/3D-Platformer-Lite-Hot.
